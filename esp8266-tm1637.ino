@@ -15,7 +15,7 @@
 #define DEFAULT_DAY_BRIGHTNESS 3    // 默认白天亮度
 #define DEFAULT_NIGHT_BRIGHTNESS 1  // 默认夜间亮度
 #define DEFAULT_SHOW_DATE true      // 默认显示日期
-#define DEFAULT_TOGGLE_INTERVAL 5   // 默认轮换间隔（秒）
+#define DEFAULT_TOGGLE_INTERVAL 20   // 默认显示间隔（秒）
 
 // 创建显示对象
 TM1637Display display(CLK_PIN, DIO_PIN);
@@ -120,8 +120,8 @@ const char* apConfigHTML = R"rawliteral(
                     <input type='checkbox' name='show_date' checked>
                     显示日期
                 </label>
-                <label>轮换间隔（秒）</label>
-                <input type='number' name='toggle_interval' min='1' max='60' value='5' required>
+                <label>显示日期的间隔时间（秒）</label>
+                <input type='number' name='toggle_interval' min='5' max='60' value='20' required>
             </div>
             <button type='submit'>保存配置</button>
         </form>
@@ -196,8 +196,8 @@ const char* displayConfigHTML = R"rawliteral(
                 <label style='display: flex; align-items: center;'>
                     <input type='checkbox' name='show_date' style='width: auto; margin-right: 10px;'> 显示日期
                 </label>
-                <label>轮换间隔（秒）</label>
-                <input type='number' name='toggle_interval' min='1' max='60' value='5' required>
+                <label>显示日期的间隔时间（秒）</label>
+                <input type='number' name='toggle_interval' min='5' max='60' value='20' required>
             </div>
             <button type='submit'>保存配置</button>
         </form>
@@ -321,8 +321,8 @@ void handleDisplayConfig() {
     return;
   }
 
-  if (toggleIntervalVal < 1 || toggleIntervalVal > 60) {
-    server.send(400, "text/plain", "轮换间隔必须在1-60秒之间");
+  if (toggleIntervalVal < 5 || toggleIntervalVal > 60) {
+    server.send(400, "text/plain", "日期显示间隔必须在5-60秒之间");
     return;
   }
 
@@ -352,7 +352,7 @@ void handleDisplayConfig() {
     delay(5000);
     ESP.restart();
   } else {
-    server.send(200, "text/html", "<html><head><meta charset='utf-8'><meta http-equiv='refresh' content='3;url=/'></head><body>亮度配置已保存</body></html>");
+    server.send(200, "text/html", "<html><head><meta charset='utf-8'><meta http-equiv='refresh' content='3;url=/'></head><body>配置已保存</body></html>");
   }
 }
 
@@ -365,7 +365,7 @@ void loadDisplayConfig() {
   // 验证读取的值是否有效
   if (displayConfig.dayBrightness > 4) displayConfig.dayBrightness = DEFAULT_DAY_BRIGHTNESS;
   if (displayConfig.nightBrightness > 4) displayConfig.nightBrightness = DEFAULT_NIGHT_BRIGHTNESS;
-  if (displayConfig.toggleInterval < 1 || displayConfig.toggleInterval > 60) displayConfig.toggleInterval = DEFAULT_TOGGLE_INTERVAL;
+  if (displayConfig.toggleInterval < 1 || displayConfig.toggleInterval > 10) displayConfig.toggleInterval = DEFAULT_TOGGLE_INTERVAL;
 }
 
 void handleReset() {
@@ -502,10 +502,12 @@ void loop() {
   static bool showingTime = true;
   static unsigned long lastDisplayToggle = 0;
 
-  // 根据配置切换显示时间或日期
-  if (displayConfig.showDate && (millis() - lastDisplayToggle >= (displayConfig.toggleInterval * 1000))) {
-    showingTime = !showingTime;
-    lastDisplayToggle = millis();
+  // 根据配置的间隔显示日期，固定显示3秒
+  unsigned long currentMillis = millis();
+  unsigned long cyclePosition = (currentMillis / 1000) % displayConfig.toggleInterval;  // 当前在显示周期内的位置
+  
+  if (displayConfig.showDate) {
+    showingTime = !(cyclePosition < 3);  // 固定显示3秒日期
   }
 
   if (showingTime || !displayConfig.showDate) {
@@ -518,7 +520,7 @@ void loop() {
     breakTime(rawTime, tm);
     int month = tm.Month;
     int day = tm.Day;
-    display.showNumberDecEx(month * 100 + day, 0x40, false, 4, 0);
+    display.showNumberDecEx(month * 100 + day, 0x00, false, 4, 0);
   }
 
   static unsigned long lastWiFiCheck = 0;  // 上次检查WiFi状态的时间
