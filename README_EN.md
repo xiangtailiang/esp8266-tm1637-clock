@@ -18,6 +18,8 @@ A network clock project based on ESP8266 and TM1637 display module, supporting N
 
 The image above shows the actual running effect of the device. You can see the 4-digit LED display clearly showing the current time, with smart brightness adjustment ensuring clear visibility in different lighting conditions.
 
+![Config Page](demo-web.jpg)
+
 ## Hardware Requirements
 
 ### Components Needed
