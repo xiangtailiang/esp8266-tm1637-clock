@@ -11,17 +11,27 @@
 #define DIO_PIN D6  // DIO引脚连接到D6
 #define EEPROM_SIZE 512
 #define BRIGHTNESS_ADDR 100         // EEPROM中亮度值的存储地址
+#define DISPLAY_CONFIG_ADDR 102     // EEPROM中显示配置的存储地址
 #define DEFAULT_DAY_BRIGHTNESS 3    // 默认白天亮度
 #define DEFAULT_NIGHT_BRIGHTNESS 1  // 默认夜间亮度
+#define DEFAULT_SHOW_DATE true      // 默认显示日期
+#define DEFAULT_TOGGLE_INTERVAL 5   // 默认轮换间隔（秒）
 
 // 创建显示对象
 TM1637Display display(CLK_PIN, DIO_PIN);
 
-// 亮度配置
+// 显示配置
 struct {
   uint8_t dayBrightness;
   uint8_t nightBrightness;
-} brightnessConfig = { DEFAULT_DAY_BRIGHTNESS, DEFAULT_NIGHT_BRIGHTNESS };
+  bool showDate;
+  uint8_t toggleInterval;
+} displayConfig = { 
+  DEFAULT_DAY_BRIGHTNESS,
+  DEFAULT_NIGHT_BRIGHTNESS,
+  DEFAULT_SHOW_DATE,
+  DEFAULT_TOGGLE_INTERVAL
+};
 
 // 创建UDP和NTP对象
 WiFiUDP ntpUDP;
@@ -51,8 +61,41 @@ const char* apConfigHTML = R"rawliteral(
         input { width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box; }
         button { width: 100%; padding: 10px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
         button:hover { background-color: #45a049; }
-        .brightness-config { margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; }
+        .brightness-config, .display-config { margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; }
         label { display: block; margin: 10px 0 5px; }
+        .checkbox-label { display: flex; align-items: center; }
+        .checkbox-label input[type='checkbox'] { width: auto; margin-right: 10px; }
+    </style>
+    <script>
+        window.onload = function() {
+            fetch('/get_config')
+                .then(response => response.json())
+                .then(config => {
+                    document.querySelector('input[name="day_brightness"]').value = config.dayBrightness;
+                    document.querySelector('input[name="night_brightness"]').value = config.nightBrightness;
+                    document.querySelector('input[name="show_date"]').checked = config.showDate;
+                    document.querySelector('input[name="toggle_interval"]').value = config.toggleInterval;
+                })
+                .catch(error => console.error('Error:', error));
+        };
+    </script>
+</head>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <title>设备配置</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        .container { max-width: 400px; margin: 0 auto; }
+        input { width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #45a049; }
+        .brightness-config, .display-config { margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; }
+        label { display: block; margin: 10px 0 5px; }
+        .checkbox-label { display: flex; align-items: center; }
+        .checkbox-label input[type='checkbox'] { width: auto; margin-right: 10px; }
     </style>
 </head>
 <body>
@@ -71,6 +114,15 @@ const char* apConfigHTML = R"rawliteral(
                 <label>夜间亮度</label>
                 <input type='number' name='night_brightness' min='0' max='4' value='1' required>
             </div>
+            <div class='display-config'>
+                <h3>显示设置</h3>
+                <label class='checkbox-label'>
+                    <input type='checkbox' name='show_date' checked>
+                    显示日期
+                </label>
+                <label>轮换间隔（秒）</label>
+                <input type='number' name='toggle_interval' min='1' max='60' value='5' required>
+            </div>
             <button type='submit'>保存配置</button>
         </form>
     </div>
@@ -79,13 +131,44 @@ const char* apConfigHTML = R"rawliteral(
 )rawliteral";
 
 // 亮度配置页面HTML
-const char* brightnessConfigHTML = R"rawliteral(
+const char* displayConfigHTML = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset='utf-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1'>
-    <title>亮度配置</title>
+    <title>显示配置</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        .container { max-width: 400px; margin: 0 auto; }
+        input { width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 10px; }
+        button:hover { background-color: #45a049; }
+        .brightness-config { margin-top: 20px; }
+        label { display: block; margin: 10px 0 5px; }
+        .reset-button { background-color: #f44336; }
+        .reset-button:hover { background-color: #da190b; }
+    </style>
+    <script>
+        window.onload = function() {
+            fetch('/get_config')
+                .then(response => response.json())
+                .then(config => {
+                    document.querySelector('input[name="day_brightness"]').value = config.dayBrightness;
+                    document.querySelector('input[name="night_brightness"]').value = config.nightBrightness;
+                    document.querySelector('input[name="show_date"]').checked = config.showDate;
+                    document.querySelector('input[name="toggle_interval"]').value = config.toggleInterval;
+                })
+                .catch(error => console.error('Error:', error));
+        };
+    </script>
+</head>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <title>显示配置</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
         .container { max-width: 400px; margin: 0 auto; }
@@ -100,13 +183,21 @@ const char* brightnessConfigHTML = R"rawliteral(
 </head>
 <body>
     <div class='container'>
-        <h2>亮度配置</h2>
-        <form action='/brightness' method='POST'>
+        <h2>显示配置</h2>
+        <form action='/display_config' method='POST'>
             <div class='brightness-config'>
                 <label>白天亮度 (7:00-20:00)</label>
                 <input type='number' name='day_brightness' min='0' max='4' value='3' required>
                 <label>夜间亮度</label>
                 <input type='number' name='night_brightness' min='0' max='4' value='1' required>
+            </div>
+            <div class='display-config' style='margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;'>
+                <h3>显示设置</h3>
+                <label style='display: flex; align-items: center;'>
+                    <input type='checkbox' name='show_date' style='width: auto; margin-right: 10px;'> 显示日期
+                </label>
+                <label>轮换间隔（秒）</label>
+                <input type='number' name='toggle_interval' min='1' max='60' value='5' required>
             </div>
             <button type='submit'>保存配置</button>
         </form>
@@ -119,9 +210,11 @@ const char* brightnessConfigHTML = R"rawliteral(
 )rawliteral";
 
 
-void saveBrightnessConfig(uint8_t dayBrightness, uint8_t nightBrightness) {
+void saveDisplayConfig(uint8_t dayBrightness, uint8_t nightBrightness, bool showDate, uint8_t toggleInterval) {
   EEPROM.write(BRIGHTNESS_ADDR, dayBrightness);
   EEPROM.write(BRIGHTNESS_ADDR + 1, nightBrightness);
+  EEPROM.write(DISPLAY_CONFIG_ADDR, showDate ? 1 : 0);
+  EEPROM.write(DISPLAY_CONFIG_ADDR + 1, toggleInterval);
   EEPROM.commit();
 }
 
@@ -191,57 +284,23 @@ void startAPMode() {
   display.showNumberDecEx(9999, 0x40, false, 4, 0);  // 显示9999表示等待配置
 }
 
+void handleGetConfig() {
+  String json = "{\"dayBrightness\":" + String(displayConfig.dayBrightness) + 
+                ",\"nightBrightness\":" + String(displayConfig.nightBrightness) + 
+                ",\"showDate\":" + (displayConfig.showDate ? "true" : "false") + 
+                ",\"toggleInterval\":" + String(displayConfig.toggleInterval) + "}"; 
+  server.send(200, "application/json", json);
+}
+
 void handleRoot() {
   if (WiFi.getMode() == WIFI_AP) {
     server.send(200, "text/html", apConfigHTML);
   } else {
-    server.send(200, "text/html", brightnessConfigHTML);
+    server.send(200, "text/html", displayConfigHTML);
   }
 }
 
-void handleConfigure() {
-  if (server.method() != HTTP_POST) {
-    server.send(405, "text/plain", "Method Not Allowed");
-    return;
-  }
-
-  if (WiFi.getMode() == WIFI_AP) {
-    String ssid = server.arg("ssid");
-    String password = server.arg("password");
-    String dayBrightness = server.arg("day_brightness");
-    String nightBrightness = server.arg("night_brightness");
-
-    if (ssid.length() == 0 || password.length() == 0) {
-      server.send(400, "text/plain", "请输入WiFi信息");
-      return;
-    }
-
-    // 验证并保存亮度配置
-    uint8_t dayBrightnessVal = dayBrightness.toInt();
-    uint8_t nightBrightnessVal = nightBrightness.toInt();
-
-    if (dayBrightnessVal > 4 || nightBrightnessVal > 4) {
-      server.send(400, "text/plain", "亮度值必须在0-4之间");
-      return;
-    }
-
-    // 保存亮度配置
-    saveBrightnessConfig(dayBrightnessVal, nightBrightnessVal);
-
-    server.send(200, "text/html", "<html><head><meta charset='utf-8'><meta http-equiv='refresh' content='5;url=/'></head><body>正在保存配置并重启，请稍候...</body></html>");
-
-    // 保存WiFi配置
-    saveWiFiConfig(ssid.c_str(), password.c_str());
-
-    // 延迟3秒后重启
-    delay(3000);
-    ESP.restart();
-  } else {
-    server.send(405, "text/plain", "Method Not Allowed");
-  }
-}
-
-void handleBrightness() {
+void handleDisplayConfig() {
   if (server.method() != HTTP_POST) {
     server.send(405, "text/plain", "Method Not Allowed");
     return;
@@ -249,31 +308,64 @@ void handleBrightness() {
 
   String dayBrightness = server.arg("day_brightness");
   String nightBrightness = server.arg("night_brightness");
+  bool showDate = server.hasArg("show_date");
+  String toggleInterval = server.arg("toggle_interval");
 
   // 验证亮度值
   uint8_t dayBrightnessVal = dayBrightness.toInt();
   uint8_t nightBrightnessVal = nightBrightness.toInt();
+  uint8_t toggleIntervalVal = toggleInterval.toInt();
 
   if (dayBrightnessVal > 4 || nightBrightnessVal > 4) {
     server.send(400, "text/plain", "亮度值必须在0-4之间");
     return;
   }
 
-  // 保存亮度配置
-  saveBrightnessConfig(dayBrightnessVal, nightBrightnessVal);
-  brightnessConfig.dayBrightness = dayBrightnessVal;
-  brightnessConfig.nightBrightness = nightBrightnessVal;
+  if (toggleIntervalVal < 1 || toggleIntervalVal > 60) {
+    server.send(400, "text/plain", "轮换间隔必须在1-60秒之间");
+    return;
+  }
 
-  server.send(200, "text/html", "<html><head><meta charset='utf-8'><meta http-equiv='refresh' content='3;url=/'></head><body>亮度配置已保存</body></html>");
+  // 保存显示配置
+  saveDisplayConfig(dayBrightnessVal, nightBrightnessVal, showDate, toggleIntervalVal);
+  displayConfig.dayBrightness = dayBrightnessVal;
+  displayConfig.nightBrightness = nightBrightnessVal;
+  displayConfig.showDate = showDate;
+  displayConfig.toggleInterval = toggleIntervalVal;
+
+  // 在AP模式下，保存WiFi配置
+  if (WiFi.getMode() == WIFI_AP) {
+    String ssid = server.arg("ssid");
+    String password = server.arg("password");
+    
+    if (ssid.length() == 0) {
+      server.send(400, "text/plain", "WiFi名称不能为空");
+      return;
+    }
+
+    // 保存WiFi配置
+    saveWiFiConfig(ssid.c_str(), password.c_str());
+
+    server.send(200, "text/html", "<html><head><meta charset='utf-8'><meta http-equiv='refresh' content='5;url=/'></head><body>配置已保存，设备将在5秒后重启...</body></html>");
+    
+    // 延迟5秒后重启
+    delay(5000);
+    ESP.restart();
+  } else {
+    server.send(200, "text/html", "<html><head><meta charset='utf-8'><meta http-equiv='refresh' content='3;url=/'></head><body>亮度配置已保存</body></html>");
+  }
 }
 
-void loadBrightnessConfig() {
-  brightnessConfig.dayBrightness = EEPROM.read(BRIGHTNESS_ADDR);
-  brightnessConfig.nightBrightness = EEPROM.read(BRIGHTNESS_ADDR + 1);
+void loadDisplayConfig() {
+  displayConfig.dayBrightness = EEPROM.read(BRIGHTNESS_ADDR);
+  displayConfig.nightBrightness = EEPROM.read(BRIGHTNESS_ADDR + 1);
+  displayConfig.showDate = EEPROM.read(DISPLAY_CONFIG_ADDR) == 1;
+  displayConfig.toggleInterval = EEPROM.read(DISPLAY_CONFIG_ADDR + 1);
 
   // 验证读取的值是否有效
-  if (brightnessConfig.dayBrightness > 4) brightnessConfig.dayBrightness = DEFAULT_DAY_BRIGHTNESS;
-  if (brightnessConfig.nightBrightness > 4) brightnessConfig.nightBrightness = DEFAULT_NIGHT_BRIGHTNESS;
+  if (displayConfig.dayBrightness > 4) displayConfig.dayBrightness = DEFAULT_DAY_BRIGHTNESS;
+  if (displayConfig.nightBrightness > 4) displayConfig.nightBrightness = DEFAULT_NIGHT_BRIGHTNESS;
+  if (displayConfig.toggleInterval < 1 || displayConfig.toggleInterval > 60) displayConfig.toggleInterval = DEFAULT_TOGGLE_INTERVAL;
 }
 
 void handleReset() {
@@ -299,8 +391,21 @@ void setup() {
   Serial.begin(115200);
   EEPROM.begin(EEPROM_SIZE);
   display.clear();
-  loadBrightnessConfig();                                   // 加载亮度配置
-  display.setBrightness(brightnessConfig.nightBrightness);  // 初始使用夜间亮度
+  loadDisplayConfig();                                   // 加载显示配置
+  
+  // 输出当前配置信息
+  Serial.println("\n当前显示配置信息：");
+  Serial.print("白天亮度 (7:00-20:00): ");
+  Serial.println(displayConfig.dayBrightness);
+  Serial.print("夜间亮度: ");
+  Serial.println(displayConfig.nightBrightness);
+  Serial.print("显示日期: ");
+  Serial.println(displayConfig.showDate ? "开启" : "关闭");
+  Serial.print("轮换间隔: ");
+  Serial.print(displayConfig.toggleInterval);
+  Serial.println("秒");
+  
+  display.setBrightness(displayConfig.nightBrightness);  // 初始使用夜间亮度
   display.showNumberDecEx(8888, 0x40, false, 4, 0);         // 显示8888
 
   // 尝试使用保存的WiFi配置连接
@@ -310,7 +415,7 @@ void setup() {
 
     // 设置Web服务器路由
     server.on("/", handleRoot);
-    server.on("/configure", handleConfigure);
+    server.on("/configure", handleDisplayConfig);
     server.begin();
 
     // 在AP模式下循环运行Web服务器
@@ -322,8 +427,9 @@ void setup() {
 
   // 在STA模式下也启动Web服务器
   server.on("/", handleRoot);
-  server.on("/brightness", handleBrightness);
+  server.on("/display_config", handleDisplayConfig);
   server.on("/reset", handleReset);
+  server.on("/get_config", HTTP_GET, handleGetConfig);
   server.begin();
 
   Serial.println("\nWiFi连接成功");
@@ -382,9 +488,9 @@ void loop() {
 
   // 根据时间设置亮度（7:00-20:00为白天）
   if (hours >= 7 && hours < 20) {
-    display.setBrightness(brightnessConfig.dayBrightness);  // 白天亮度
+    display.setBrightness(displayConfig.dayBrightness);  // 白天亮度
   } else {
-    display.setBrightness(brightnessConfig.nightBrightness);  // 夜间亮度
+    display.setBrightness(displayConfig.nightBrightness);  // 夜间亮度
   }
 
   // 每1000毫秒切换一次冒号状态
@@ -393,8 +499,27 @@ void loop() {
     lastToggle = millis();
   }
 
-  // 显示时间和冒号
-  display.showNumberDecEx(currentTime, colonOn ? 0x40 : 0x00, true, 4, 0);
+  static bool showingTime = true;
+  static unsigned long lastDisplayToggle = 0;
+
+  // 根据配置切换显示时间或日期
+  if (displayConfig.showDate && (millis() - lastDisplayToggle >= (displayConfig.toggleInterval * 1000))) {
+    showingTime = !showingTime;
+    lastDisplayToggle = millis();
+  }
+
+  if (showingTime || !displayConfig.showDate) {
+    // 显示时间和冒号
+    display.showNumberDecEx(currentTime, colonOn ? 0x40 : 0x00, true, 4, 0);
+  } else {
+    // 显示日期（月份和日期）
+    time_t rawTime = timeClient.getEpochTime();
+    tmElements_t tm;
+    breakTime(rawTime, tm);
+    int month = tm.Month;
+    int day = tm.Day;
+    display.showNumberDecEx(month * 100 + day, 0x40, false, 4, 0);
+  }
 
   static unsigned long lastWiFiCheck = 0;  // 上次检查WiFi状态的时间
 
