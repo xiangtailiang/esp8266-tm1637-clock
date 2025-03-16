@@ -1,0 +1,19 @@
+# Arduino build files
+*.hex
+*.elf
+*.eep
+*.bin
+
+# Arduino IDE files
+.vscode/
+.idea/
+
+# Build directory
+build/
+
+# Temporary files
+*~
+.DS_Store
+
+# Dependencies
+libraries/
